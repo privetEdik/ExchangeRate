@@ -1,6 +1,7 @@
 /build/
 /bin
 /.settings
+/eclipse-workspace
 /resource
 .classpath
 /target
