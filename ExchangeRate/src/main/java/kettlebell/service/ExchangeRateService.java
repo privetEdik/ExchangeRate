@@ -2,13 +2,13 @@ package kettlebell.service;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
-import java.sql.SQLException;
 import java.util.List;
 import java.util.NoSuchElementException;
 import java.util.Optional;
 
 import kettlebell.dao.ExchangeRateRepository;
 import kettlebell.dto.ConvertDTO;
+import kettlebell.exceptions.AppException;
 import kettlebell.model.ExchangeRate;
 import kettlebell.repository.JdbcExchangeRateRepository;
 
@@ -19,7 +19,7 @@ public class ExchangeRateService {
 	ExchangeRateRepository repository = new JdbcExchangeRateRepository();
 
 	public ConvertDTO convertCurrency(String baseCurrenctCode, String tergetCurrenctCode, BigDecimal amount)
-			throws SQLException, NoSuchElementException {
+			throws AppException, NoSuchElementException {
 
 		ExchangeRate exchangeRate = getExchangeRate(baseCurrenctCode, tergetCurrenctCode).orElseThrow();
 		BigDecimal convertedAmount = amount.multiply(exchangeRate.getRate());
@@ -33,7 +33,7 @@ public class ExchangeRateService {
 		//@formatter:on
 	}
 
-	private Optional<ExchangeRate> getExchangeRate(String baseCurrencyId, String targetCurrencyId) throws SQLException {
+	private Optional<ExchangeRate> getExchangeRate(String baseCurrencyId, String targetCurrencyId) throws AppException {
 		Optional<ExchangeRate> exchangeRateOpt = getDirectRate(baseCurrencyId, targetCurrencyId);
 
 		if (exchangeRateOpt.isEmpty()) {
@@ -47,11 +47,11 @@ public class ExchangeRateService {
 		return exchangeRateOpt;
 	}
 
-	private Optional<ExchangeRate> getDirectRate(String baseCurrencyId, String targetCurrencyId) throws SQLException {
+	private Optional<ExchangeRate> getDirectRate(String baseCurrencyId, String targetCurrencyId) throws AppException {
 		return repository.getByCode(baseCurrencyId, targetCurrencyId);
 	}
 
-	private Optional<ExchangeRate> getReverseRate(String baseCurrencyId, String targetCurrencyId) throws SQLException {
+	private Optional<ExchangeRate> getReverseRate(String baseCurrencyId, String targetCurrencyId) throws AppException {
 		Optional<ExchangeRate> exchangeRateOpt = repository.getByCode(targetCurrencyId, baseCurrencyId);
 
 		if (exchangeRateOpt.isEmpty()) {
@@ -69,7 +69,7 @@ public class ExchangeRateService {
 	}
 
 	private Optional<ExchangeRate> getRateForUSD(String baseCurrencyId, String targetCurrencyId)
-			throws SQLException, NoSuchElementException {
+			throws AppException, NoSuchElementException {
 		List<ExchangeRate> ratesWithUsdBase = repository.getByCodeWithUsdBase(baseCurrencyId, targetCurrencyId);
 
 		ExchangeRate usdToBaseExchange = getExchangeRateForCode(ratesWithUsdBase, baseCurrencyId);

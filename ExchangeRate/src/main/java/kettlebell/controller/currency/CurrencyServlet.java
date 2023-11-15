@@ -1,7 +1,6 @@
 package kettlebell.controller.currency;
 
 import java.io.IOException;
-import java.sql.SQLException;
 import java.util.Optional;
 
 import jakarta.servlet.ServletException;
@@ -12,7 +11,9 @@ import jakarta.servlet.http.HttpServletResponse;
 import static kettlebell.utils.Validation.isValidCurrencyCode;
 
 import kettlebell.dao.CurrencyRepository;
-import kettlebell.mapper.ResponseMapper;
+import kettlebell.exceptions.AppException;
+import kettlebell.exceptions.ErrorMessage;
+import kettlebell.mapper.RespMapper;
 import kettlebell.model.Currency;
 import kettlebell.repository.JdbcCurrencyRepository;
 
@@ -25,21 +26,25 @@ public class CurrencyServlet extends HttpServlet {
 
 		String code = req.getPathInfo().replaceAll("/", "");
 
+		if (code == null || code.isBlank()) {
+			new RespMapper(resp, new AppException(ErrorMessage.CURRENCY_MISS)).getMapperErr();
+		}
+
 		if (!isValidCurrencyCode(code)) {
-			new ResponseMapper(resp, "C").formatISO();
+			new RespMapper(resp, new AppException(ErrorMessage.CURRENCY_STANDART)).getMapperErr();
 			return;
 		}
 
 		try {
 			Optional<Currency> currencyOptional = currencyRepository.findByCode(code);
 			if (currencyOptional.isEmpty()) {
-				new ResponseMapper(resp).nothingInDatabase();
+				new RespMapper(resp, new AppException(ErrorMessage.CURRENCY_NOT_FOUND)).getMapperErr();
 				return;
 			}
-			new ResponseMapper(resp).successfulOut(currencyOptional.get());
+			new RespMapper(resp, currencyOptional.get()).getMapperLuck();
 
-		} catch (SQLException e) {
-			new ResponseMapper(resp).errorDatabase();
+		} catch (AppException e) {
+			new RespMapper(resp, e);
 		}
 	}
 }

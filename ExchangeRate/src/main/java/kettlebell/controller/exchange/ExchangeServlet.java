@@ -2,7 +2,6 @@ package kettlebell.controller.exchange;
 
 import java.io.IOException;
 import java.math.BigDecimal;
-import java.sql.SQLException;
 import java.util.NoSuchElementException;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -13,8 +12,10 @@ import jakarta.servlet.http.HttpServlet;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 
-import kettlebell.mapper.ResponseMapper;
+import kettlebell.mapper.RespMapper;
 import kettlebell.dto.ConvertDTO;
+import kettlebell.exceptions.AppException;
+import kettlebell.exceptions.ErrorMessage;
 import kettlebell.service.ExchangeRateService;
 
 import static kettlebell.utils.Validation.isValidCurrencyCode;
@@ -32,26 +33,14 @@ public class ExchangeServlet extends HttpServlet {
 		String targetCurrencyCode = req.getParameter("to");
 		String amountToConvert = req.getParameter("amount");
 
-		String missParam = "";
-		if (baseCurrencyCode == null || baseCurrencyCode.isBlank()) {
-			missParam = "from";
-		} else if (targetCurrencyCode == null || targetCurrencyCode.isBlank()) {
-			missParam = "to";
-		} else if (amountToConvert == null || amountToConvert.isBlank()) {
-			missParam = "amount";
-		}
-
-		if (!missParam.equals("")) {
-			new ResponseMapper(resp, missParam).missParameter();
+		if (baseCurrencyCode == null || baseCurrencyCode.isBlank() || targetCurrencyCode == null
+				|| targetCurrencyCode.isBlank() || amountToConvert == null || amountToConvert.isBlank()) {
+			new RespMapper(resp, new AppException(ErrorMessage.FIELD_MISS)).getMapperErr();
 			return;
 		}
 
-		if (!isValidCurrencyCode(baseCurrencyCode)) {
-			new ResponseMapper(resp, "Base c").formatISO();
-			return;
-		}
-		if (!isValidCurrencyCode(targetCurrencyCode)) {
-			new ResponseMapper(resp, "Target c").formatISO();
+		if (!isValidCurrencyCode(baseCurrencyCode) || !isValidCurrencyCode(targetCurrencyCode)) {
+			new RespMapper(resp, new AppException(ErrorMessage.CURRENCY_STANDART)).getMapperErr();
 			return;
 		}
 
@@ -59,7 +48,7 @@ public class ExchangeServlet extends HttpServlet {
 		try {
 			amount = BigDecimal.valueOf(Double.parseDouble(amountToConvert));
 		} catch (NumberFormatException e) {
-			new ResponseMapper(resp, "amount").incorectParameter();
+			new RespMapper(resp, new AppException(ErrorMessage.INCORRECT_AMOUNT_VALUE)).getMapperErr();
 			return;
 		}
 
@@ -70,12 +59,12 @@ public class ExchangeServlet extends HttpServlet {
 					targetCurrencyCode,
 					amount);
 			//@formatter:on
-			new ResponseMapper(resp).successfulOut(convertDTO);
+			new RespMapper(resp, convertDTO).getMapperLuck();
 
 		} catch (NoSuchElementException e) {
-			new ResponseMapper(resp).noRate();
-		} catch (SQLException e) {
-			new ResponseMapper(resp).errorDatabase();
+			new RespMapper(resp, new AppException(ErrorMessage.RATE_NOT_FOUND)).getMapperErr();
+		} catch (AppException e) {
+			new RespMapper(resp, e).getMapperErr();
 		}
 
 	}

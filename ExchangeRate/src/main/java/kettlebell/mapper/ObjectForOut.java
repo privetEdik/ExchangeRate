@@ -1,15 +1,14 @@
 package kettlebell.mapper;
 
-public class Massage {
+public class ObjectForOut {
 	private String message;
 
-	public Massage(String message) {
+	public ObjectForOut(String message) {
 		this.message = message;
 	}
 
 	public String getMessage() {
 		return message;
 	}
-	
-	
+
 }

@@ -1,7 +1,6 @@
 package kettlebell.controller.currency;
 
 import java.io.IOException;
-import java.sql.SQLException;
 import java.util.List;
 
 import jakarta.servlet.ServletException;
@@ -11,16 +10,17 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 
 import kettlebell.dao.CurrencyRepository;
-import kettlebell.mapper.ResponseMapper;
+import kettlebell.exceptions.AppException;
+import kettlebell.exceptions.ErrorMessage;
+import kettlebell.mapper.RespMapper;
 import kettlebell.model.Currency;
 import kettlebell.repository.JdbcCurrencyRepository;
+import static kettlebell.utils.Validation.isValidCurrencyCode;
 
 @WebServlet(name = "CurrenciesServlet", urlPatterns = "/currencies")
 public class CurrenciesServlet extends HttpServlet {
 
 	private final CurrencyRepository repository = new JdbcCurrencyRepository();
-	private final static Integer SQLITE_CONSTRAINT_UNIQUE = 19;
-
 	private static final long serialVersionUID = 1L;
 
 	@Override
@@ -28,9 +28,9 @@ public class CurrenciesServlet extends HttpServlet {
 
 		try {
 			List<Currency> currenciesList = repository.getAll();
-			new ResponseMapper(resp).successfulOut(currenciesList);
-		} catch (SQLException e) {
-			new ResponseMapper(resp).errorDatabase();
+			new RespMapper(resp, currenciesList).getMapperLuck();
+		} catch (AppException e) {
+			new RespMapper(resp, e).getMapperErr();
 		}
 	}
 
@@ -41,16 +41,13 @@ public class CurrenciesServlet extends HttpServlet {
 		String code = req.getParameter("code");
 		String sign = req.getParameter("sign");
 
-		String missParam = "";
-		if (name == null || name.isBlank()) {
-			missParam = "name";
-		} else if (code == null || code.isBlank()) {
-			missParam = "code";
-		} else if (sign == null || sign.isBlank()) {
-			missParam = "sign";
+		if (name == null || name.isBlank() || code == null || code.isBlank() || sign == null || sign.isBlank()) {
+			new RespMapper(resp, new AppException(ErrorMessage.FIELD_MISS)).getMapperErr();
+			return;
 		}
-		if (!missParam.equals("")) {
-			new ResponseMapper(resp, missParam);
+
+		if (!isValidCurrencyCode(code)) {
+			new RespMapper(resp, new AppException(ErrorMessage.CURRENCY_STANDART)).getMapperErr();
 			return;
 		}
 
@@ -58,14 +55,10 @@ public class CurrenciesServlet extends HttpServlet {
 			Currency currency = new Currency(code, name, sign);
 			Integer addCurrencyId = repository.add(currency);
 			currency.setId(addCurrencyId);
-			new ResponseMapper(resp).successfulOut(currency);
-		} catch (SQLException e) {
+			new RespMapper(resp, currency).getMapperLuck();
+		} catch (AppException e) {
+			new RespMapper(resp, e).getMapperErr();
 
-			if (e.getErrorCode() == SQLITE_CONSTRAINT_UNIQUE) {
-				new ResponseMapper(resp, "Currency").alreadyExists();
-				return;
-			}
-			new ResponseMapper(resp).errorDatabase();
 		}
 	}
 

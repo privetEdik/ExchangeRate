@@ -1,13 +1,13 @@
 package kettlebell.dao;
 
-import java.sql.SQLException;
 import java.util.List;
 import java.util.Optional;
 
+import kettlebell.exceptions.AppException;
+
 public interface CRUDRepository<T> { 
-	 Integer add(T model ) throws SQLException;
-	 Optional<T> getById(Integer id) throws SQLException;
-	 List<T> getAll() throws SQLException;
-	 void put(T model) throws SQLException;
-	 void remove(Integer id) throws SQLException; 
+	 Integer add(T model) throws AppException;  
+	 Optional<T> getById(Integer id) throws AppException;
+	 List<T> getAll() throws AppException;
+	 void put(T model) throws AppException; 
 }

@@ -1,5 +1,6 @@
 package kettlebell.repository;
 
+
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
@@ -9,11 +10,14 @@ import java.util.List;
 import java.util.Optional;
 
 import kettlebell.dao.ExchangeRateRepository;
+import kettlebell.exceptions.AppException;
+import kettlebell.exceptions.ErrorMessage;
 import kettlebell.model.Currency;
 import kettlebell.model.ExchangeRate;
 
 public class JdbcExchangeRateRepository extends Connector implements ExchangeRateRepository {
 	//@formatter:off
+	private final static Integer SQLITE_CONSTRAINT_UNIQUE = 19;
 	private static final String SQL_GET = "SELECT e.id, "
 								+ "cb.id AS b_id,"
 								+ "cb.code AS b_code,"
@@ -32,46 +36,48 @@ public class JdbcExchangeRateRepository extends Connector implements ExchangeRat
 	//@formatter:on
 
 	@Override
-	public Optional<ExchangeRate> getById(Integer id) throws SQLException {
+	public Optional<ExchangeRate> getById(Integer id) throws AppException {
 		String sql = SQL_GET + "WHERE e.id=?";
-		try (Connection connection = getConnection()) {
-			try (PreparedStatement preparedStatement = connection.prepareStatement(sql)) {
-				preparedStatement.setInt(1, id);
+		try (Connection connection = getConnection();
+				PreparedStatement preparedStatement = connection.prepareStatement(sql)) {
+			preparedStatement.setInt(1, id);
 
-				ResultSet resultSet = preparedStatement.executeQuery();
-				if (resultSet.next()) {
-					return Optional.of(getExchangeRate(resultSet));
-				}
+			ResultSet resultSet = preparedStatement.executeQuery();
+			if (resultSet.next()) {
+				return Optional.of(getExchangeRate(resultSet));
 			}
+
+		} catch (SQLException e) {
+			throw new AppException(ErrorMessage.SOMETHING_DATABASE);
 		}
 		return Optional.empty();
 	}
 
 	@Override
-	public List<ExchangeRate> getAll() throws SQLException {
+	public List<ExchangeRate> getAll() throws AppException {
 		String sql = SQL_GET + "ORDER BY e.id";
 		List<ExchangeRate> list = new ArrayList<ExchangeRate>();
-		try (Connection connection = getConnection()) {
-			try (PreparedStatement preparedStatement = connection.prepareStatement(sql)) {
+		try (Connection connection = getConnection();
+				PreparedStatement preparedStatement = connection.prepareStatement(sql)) {
 
-				ResultSet resultSet = preparedStatement.executeQuery();
+			ResultSet resultSet = preparedStatement.executeQuery();
 
-				while (resultSet.next()) {
-					list.add(getExchangeRate(resultSet));
-				}
+			while (resultSet.next()) {
+				list.add(getExchangeRate(resultSet));
 			}
+
+		} catch (SQLException e) {
+			throw new AppException(ErrorMessage.SOMETHING_DATABASE);
 		}
 		return list;
 	}
 
 	@Override
-	public Integer add(ExchangeRate model) throws SQLException {
+	public Integer add(ExchangeRate model) throws AppException {
 		//@formatter:off
 		final String sql = "INSERT INTO exchange_rates(base_currency_id,target_currency_id,rate) "
 							  + "VALUES(?,?,?);";
-		final String sqlId = "SELECT id "
-								 + "FROM exchange_rates "
-								 + "WHERE (base_currency_id=? AND target_currency_id=?);";
+		final String sqlId = "SELECT last_insert_rowid();";
 		//@formatter:on
 		Integer id = 0;
 		try (Connection connection = getConnection()) {
@@ -82,87 +88,82 @@ public class JdbcExchangeRateRepository extends Connector implements ExchangeRat
 				preparedStatement.executeUpdate();
 			}
 			try (PreparedStatement preparedStatementId = connection.prepareStatement(sqlId)) {
-				preparedStatementId.setInt(1, model.getBaseCurrency().getId());
-				preparedStatementId.setInt(2, model.getTargetCurrency().getId());
 				ResultSet resultSet = preparedStatementId.executeQuery();
 				if (resultSet.next()) {
 					id = resultSet.getInt("id");
 				}
 			}
+		} catch (SQLException e) {
+			if (e.getErrorCode() == SQLITE_CONSTRAINT_UNIQUE) {
+				throw new AppException(ErrorMessage.CURRENCY_PAIR_ALREADY_EXISTS);
+			}
+			throw new AppException(ErrorMessage.SOMETHING_DATABASE);
 		}
 		return id;
 	}
 
 	@Override
-	public void put(ExchangeRate model) throws SQLException {
+	public void put(ExchangeRate model) throws AppException {
 		//@formatter:off
 		String sql = "UPDATE exchange_rates "
 					  + "SET base_currency_id=?, target_currency_id=?, rate=? "
 					  + "WHERE id=?";
 		//@formatter:on
-		try (Connection connection = getConnection()) {
-			try (PreparedStatement preparedStatement = connection.prepareStatement(sql)) {
+		try (Connection connection = getConnection();
+				PreparedStatement preparedStatement = connection.prepareStatement(sql)) {
 
-				preparedStatement.setInt(1, model.getBaseCurrency().getId());
-				preparedStatement.setInt(2, model.getTargetCurrency().getId());
-				preparedStatement.setBigDecimal(3, model.getRate());
-				preparedStatement.setInt(4, model.getId());
-				preparedStatement.executeUpdate();
-			}
+			preparedStatement.setInt(1, model.getBaseCurrency().getId());
+			preparedStatement.setInt(2, model.getTargetCurrency().getId());
+			preparedStatement.setBigDecimal(3, model.getRate());
+			preparedStatement.setInt(4, model.getId());
+			preparedStatement.executeUpdate();
+		} catch (SQLException e) {
+			throw new AppException(ErrorMessage.SOMETHING_DATABASE);
 		}
+
 	}
 
 	@Override
-	public void remove(Integer id) throws SQLException {
-
-		String sql = "DELETE FROM exchange_rates WHERE id=?";
-
-		try (Connection connection = getConnection()) {
-			try (PreparedStatement preparedStatement = connection.prepareStatement(sql)) {
-
-				preparedStatement.setInt(1, id);
-				preparedStatement.executeUpdate();
-			}
-		}
-	}
-
-	@Override
-	public Optional<ExchangeRate> getByCode(String baseCurrencyCode, String targetCurrencyCode) throws SQLException {
+	public Optional<ExchangeRate> getByCode(String baseCurrencyCode, String targetCurrencyCode) throws AppException {
 		String sql = SQL_GET + " WHERE (cb.code=? AND ct.code=?)";
-		try (Connection connection = getConnection()) {
-			try (PreparedStatement preparedStatement = connection.prepareStatement(sql)) {
+		try (Connection connection = getConnection();
+				PreparedStatement preparedStatement = connection.prepareStatement(sql)) {
 
-				preparedStatement.setString(1, baseCurrencyCode);
-				preparedStatement.setString(2, targetCurrencyCode);
+			preparedStatement.setString(1, baseCurrencyCode);
+			preparedStatement.setString(2, targetCurrencyCode);
 
-				ResultSet resultSet = preparedStatement.executeQuery();
-				if (resultSet.next()) {
-					return Optional.of(getExchangeRate(resultSet));
-				}
+			ResultSet resultSet = preparedStatement.executeQuery();
+			if (resultSet.next()) {
+				return Optional.of(getExchangeRate(resultSet));
 			}
+
+		} catch (SQLException e) {
+			throw new AppException(ErrorMessage.SOMETHING_DATABASE);
 		}
 		return Optional.empty();
 	}
 
 	public List<ExchangeRate> getByCodeWithUsdBase(String baseCurrencyCode, String targetCurrencyCode)
-			throws SQLException {
+			throws AppException {
 		//@formatter:off
 		String sql = SQL_GET + " WHERE ((cb.code='USD' AND (ct.code=? OR ct.code=?))"
 										+ " OR ((cb.code=? OR cb.code=?) AND ct.code='USD'))";
 		//@formatter:on
 		List<ExchangeRate> list = new ArrayList<>();
-		try (Connection connection = getConnection()) {
-			try (PreparedStatement preparedStatement = connection.prepareStatement(sql)) {
-				preparedStatement.setString(1, baseCurrencyCode);
-				preparedStatement.setString(2, targetCurrencyCode);
-				preparedStatement.setString(3, baseCurrencyCode);
-				preparedStatement.setString(4, targetCurrencyCode);
+		try (Connection connection = getConnection();
+				PreparedStatement preparedStatement = connection.prepareStatement(sql)) {
+			preparedStatement.setString(1, baseCurrencyCode);
+			preparedStatement.setString(2, targetCurrencyCode);
+			preparedStatement.setString(3, baseCurrencyCode);
+			preparedStatement.setString(4, targetCurrencyCode);
 
-				ResultSet resultSet = preparedStatement.executeQuery();
-				while (resultSet.next()) {
-					list.add(getExchangeRate(resultSet));
-				}
+			ResultSet resultSet = preparedStatement.executeQuery();
+			while (resultSet.next()) {
+				list.add(getExchangeRate(resultSet));
 			}
+
+		} catch (SQLException e) {
+			throw new AppException(ErrorMessage.SOMETHING_DATABASE);
 		}
 		return list;
 	}

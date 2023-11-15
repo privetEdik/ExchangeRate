@@ -8,13 +8,17 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
+
 import kettlebell.dao.CurrencyRepository;
+import kettlebell.exceptions.AppException;
+import kettlebell.exceptions.ErrorMessage;
 import kettlebell.model.Currency;
 
 public class JdbcCurrencyRepository extends Connector implements CurrencyRepository {
+	private final static Integer SQLITE_CONSTRAINT_UNIQUE = 19;
 
 	@Override
-	public Optional<Currency> getById(Integer id) throws SQLException {
+	public Optional<Currency> getById(Integer id) throws AppException {
 		//@formatter:off
 		final String sql = "SELECT id, code, full_name, sign "
 							  + "FROM currencies WHERE id = ?;";
@@ -25,12 +29,14 @@ public class JdbcCurrencyRepository extends Connector implements CurrencyReposit
 			if (resultSet.next()) {
 				return Optional.of(getCurrency(resultSet));
 			}
+		} catch (SQLException e) {
+			throw new AppException(ErrorMessage.SOMETHING_DATABASE);
 		}
 		return Optional.empty();
 	}
 
 	@Override
-	public List<Currency> getAll() throws SQLException {
+	public List<Currency> getAll() throws AppException {
 		List<Currency> list = new ArrayList<>();
 		final String sql = "SELECT id, code, full_name, sign FROM currencies;";
 		try (Connection connection = getConnection();
@@ -39,36 +45,40 @@ public class JdbcCurrencyRepository extends Connector implements CurrencyReposit
 			while (resultSet.next()) {
 				list.add(getCurrency(resultSet));
 			}
+		} catch (SQLException e) {
+			throw new AppException(ErrorMessage.SOMETHING_DATABASE);
 		}
 		return list;
 	}
 
 	@Override
-	public Integer add(Currency model) throws SQLException {
+	public Integer add(Currency model) throws AppException {
 		final String sql = "INSERT INTO currencies(code,full_name,sign) VALUES(?,?,?);";
-		final String sqlId = "SELECT id FROM currencies WHERE code = ?;";
 		Integer id = 0;
+		//@formatter:off
 		try (Connection connection = getConnection();
-				PreparedStatement preparedStatement = connection.prepareStatement(sql)) {
-			preparedStatement.setString(1, model.getCode());
-			preparedStatement.setString(2, model.getFullName());
-			preparedStatement.setString(3, model.getSign());
-			preparedStatement.executeUpdate();
-			try (PreparedStatement preparedStatementId = connection.prepareStatement(sqlId)) {
-				preparedStatementId.setString(1, model.getCode());
-				ResultSet resultSet = preparedStatementId.executeQuery();
-				if (resultSet.next()) {
-					System.out.println(resultSet.getInt("id"));
-					id = resultSet.getInt("id");
-				}
+				PreparedStatement statement = connection.prepareStatement(sql)) {
+			statement.setString(1, model.getCode());
+			statement.setString(2, model.getFullName());
+			statement.setString(3, model.getSign());
+			statement.executeUpdate();
+			PreparedStatement statementKey = connection.prepareStatement("SELECT last_insert_rowid();");
+			ResultSet resultSet = statementKey.executeQuery();
+			if (resultSet.next()) {
+				id = resultSet.getInt(1);
 			}
-
+			//@formatter:on
+		} catch (SQLException e) {
+			if (e.getErrorCode() == SQLITE_CONSTRAINT_UNIQUE) {
+				throw new AppException(ErrorMessage.CURRENCY_ALREADY_EXISTS);
+			}
+			throw new AppException(ErrorMessage.SOMETHING_DATABASE);
 		}
 		return id;
 	}
 
 	@Override
-	public void put(Currency model) throws SQLException {
+	public void put(Currency model) throws AppException {
 		final String sql = "UPDATE currencies SET code=?,full_name=?,sign=? " + "WHERE id=?";
 		try (Connection connection = getConnection();
 				PreparedStatement preparedStatement = connection.prepareStatement(sql)) {
@@ -78,22 +88,13 @@ public class JdbcCurrencyRepository extends Connector implements CurrencyReposit
 			preparedStatement.setInt(4, model.getId());
 
 			preparedStatement.executeUpdate();
+		} catch (SQLException e) {
+			throw new AppException(ErrorMessage.SOMETHING_DATABASE);
 		}
 	}
 
 	@Override
-	public void remove(Integer id) throws SQLException {
-		final String sql = "DELETE FROM currencies WHERE id=?";
-		try (Connection connection = getConnection();
-				PreparedStatement preparedStatement = connection.prepareStatement(sql)) {
-			preparedStatement.setInt(1, id);
-
-			preparedStatement.execute();
-		}
-	}
-
-	@Override
-	public Optional<Currency> findByCode(String code) throws SQLException {
+	public Optional<Currency> findByCode(String code) throws AppException {
 		final String sql = "SELECT * FROM currencies WHERE code = ?";
 
 		try (Connection connection = getConnection();
@@ -104,6 +105,8 @@ public class JdbcCurrencyRepository extends Connector implements CurrencyReposit
 				return Optional.of(getCurrency(resultSet));
 			}
 
+		} catch (SQLException e) {
+			throw new AppException(ErrorMessage.SOMETHING_DATABASE);
 		}
 		return Optional.empty();
 	}

@@ -3,7 +3,6 @@ package kettlebell.controller.exchange;
 import java.io.IOException;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
-import java.sql.SQLException;
 import java.util.NoSuchElementException;
 import java.util.Optional;
 
@@ -17,7 +16,9 @@ import jakarta.servlet.http.HttpServletResponse;
 
 import kettlebell.dao.ExchangeRateRepository;
 import kettlebell.dto.ExchangeRateDTO;
-import kettlebell.mapper.ResponseMapper;
+import kettlebell.exceptions.AppException;
+import kettlebell.exceptions.ErrorMessage;
+import kettlebell.mapper.RespMapper;
 import kettlebell.model.ExchangeRate;
 import kettlebell.repository.JdbcExchangeRateRepository;
 
@@ -34,20 +35,15 @@ public class ExchangeRateServlet extends HttpServlet {
 		String url = req.getPathInfo().replaceAll("/", "");
 
 		if (url.length() != 6) {
-			new ResponseMapper(resp).syntaxErrorCurrency();
+			new RespMapper(resp, new AppException(ErrorMessage.CURRENSIES_ERROR)).getMapperErr();
 			return;
 		}
 
 		baseCurrencyCode = url.substring(0, 3);
 		targetCurrencyCode = url.substring(3);
 
-		if (!isValidCurrencyCode(baseCurrencyCode)) {
-			new ResponseMapper(resp, "Base c").formatISO();
-			return;
-		}
-
-		if (!isValidCurrencyCode(targetCurrencyCode)) {
-			new ResponseMapper(resp, "Target c").formatISO();
+		if (!isValidCurrencyCode(baseCurrencyCode) || !isValidCurrencyCode(targetCurrencyCode)) {
+			new RespMapper(resp, new AppException(ErrorMessage.CURRENCY_STANDART)).getMapperErr();
 			return;
 		}
 
@@ -65,7 +61,8 @@ public class ExchangeRateServlet extends HttpServlet {
 			Optional<ExchangeRate> optionalExchangeRate = exchangeRateRepository.getByCode(baseCurrencyCode,
 					targetCurrencyCode);
 			if (optionalExchangeRate.isEmpty()) {
-				new ResponseMapper(resp).noRate();
+				new RespMapper(resp, new AppException(ErrorMessage.RATE_NOT_FOUND)).getMapperErr();
+				return;
 			}
 			ExchangeRate exchangeRate = optionalExchangeRate.get();
 			//@formatter:off
@@ -75,9 +72,9 @@ public class ExchangeRateServlet extends HttpServlet {
 					exchangeRate.getTargetCurrency(),
 					exchangeRate.getRate().stripTrailingZeros().toPlainString());
 			//@formatter:on
-			new ResponseMapper(resp).successfulOut(rateDTO);
-		} catch (SQLException e) {
-			new ResponseMapper(resp).errorDatabase();
+			new RespMapper(resp, rateDTO).getMapperLuck();
+		} catch (AppException e) {
+			new RespMapper(resp, e).getMapperErr();
 		}
 	}
 
@@ -85,7 +82,7 @@ public class ExchangeRateServlet extends HttpServlet {
 		String parameter = req.getReader().readLine();
 
 		if (parameter == null || !parameter.contains("rate")) {
-			new ResponseMapper(resp, "rate").missParameter();
+			new RespMapper(resp, new AppException(ErrorMessage.FIELD_MISS)).getMapperErr();
 			return;
 		}
 		String rateParameter = parameter.replace("rate=", "");
@@ -104,16 +101,16 @@ public class ExchangeRateServlet extends HttpServlet {
 					exchangeRate.getTargetCurrency(),
 					rate.stripTrailingZeros().toPlainString());
 			//@formatter:on
-			new ResponseMapper(resp).successfulOut(rateDTO);
+			new RespMapper(resp, rateDTO).getMapperLuck();
 
 		} catch (NumberFormatException e) {
-			new ResponseMapper(resp, "rate").incorectParameter();
+			new RespMapper(resp, new AppException(ErrorMessage.INCORRECT_RATE_VALUE)).getMapperErr();
 
 		} catch (NoSuchElementException e) {
-			new ResponseMapper(resp).noRate();
+			new RespMapper(resp, new AppException(ErrorMessage.RATE_NOT_FOUND)).getMapperErr();
 
-		} catch (SQLException e) {
-			new ResponseMapper(resp).errorDatabase();
+		} catch (AppException e) {
+			new RespMapper(resp, e);
 		}
 
 	}

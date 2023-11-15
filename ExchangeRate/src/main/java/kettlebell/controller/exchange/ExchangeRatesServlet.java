@@ -3,10 +3,7 @@ package kettlebell.controller.exchange;
 import java.io.IOException;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
-import java.sql.SQLException;
 import java.util.List;
-import java.util.NoSuchElementException;
-
 import java.util.stream.Collectors;
 
 import static kettlebell.utils.Validation.isValidCurrencyCode;
@@ -20,7 +17,9 @@ import jakarta.servlet.http.HttpServletResponse;
 import kettlebell.dao.CurrencyRepository;
 import kettlebell.dao.ExchangeRateRepository;
 import kettlebell.dto.ExchangeRateDTO;
-import kettlebell.mapper.ResponseMapper;
+import kettlebell.exceptions.AppException;
+import kettlebell.exceptions.ErrorMessage;
+import kettlebell.mapper.RespMapper;
 import kettlebell.model.ExchangeRate;
 import kettlebell.repository.JdbcCurrencyRepository;
 import kettlebell.repository.JdbcExchangeRateRepository;
@@ -31,8 +30,6 @@ public class ExchangeRatesServlet extends HttpServlet {
 	private static final long serialVersionUID = 1L;
 	private final ExchangeRateRepository exchangeRateRepository = new JdbcExchangeRateRepository();
 	private final CurrencyRepository currencyRepository = new JdbcCurrencyRepository();
-
-	private final static Integer SQLITE_CONSTRAINT_UNIQUE = 19;
 
 	@Override
 	protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
@@ -47,9 +44,9 @@ public class ExchangeRatesServlet extends HttpServlet {
 								r.getRate().stripTrailingZeros().toPlainString()))
 					.collect(Collectors.toList());
 			//@formatter:on
-			new ResponseMapper(resp).successfulOut(rateDTOs);
-		} catch (SQLException e) {
-			new ResponseMapper(resp).errorDatabase();
+			new RespMapper(resp, rateDTOs).getMapperLuck();
+		} catch (AppException e) {
+			new RespMapper(resp, e).getMapperErr();
 		}
 	}
 
@@ -59,25 +56,17 @@ public class ExchangeRatesServlet extends HttpServlet {
 		String targetCurrencyCode = req.getParameter("targetCurrencyCode");
 		String rateParam = req.getParameter("rate");
 
-		String missParam = "";
-		if (baseCurrencyCode == null || baseCurrencyCode.isBlank()) {
-			missParam = "baseCurrencyCode";
-		} else if (targetCurrencyCode == null || targetCurrencyCode.isBlank()) {
-			missParam = "targetCurrencyCode";
-		} else if (rateParam == null || rateParam.isBlank()) {
-			missParam = "rate";
-		}
-		if (!missParam.equals("")) {
-			new ResponseMapper(resp, missParam).missParameter();
+		//@formatter:off
+		if (baseCurrencyCode == null || baseCurrencyCode.isBlank()||
+			 targetCurrencyCode == null || targetCurrencyCode.isBlank()||
+			 rateParam == null || rateParam.isBlank()) {
+		//@formatter:on
+			new RespMapper(resp, new AppException(ErrorMessage.FIELD_MISS)).getMapperErr();
 			return;
 		}
 
-		if (!isValidCurrencyCode(baseCurrencyCode)) {
-			new ResponseMapper(resp, "Base c").formatISO();
-			return;
-		}
-		if (!isValidCurrencyCode(targetCurrencyCode)) {
-			new ResponseMapper(resp, "Target c").formatISO();
+		if (!isValidCurrencyCode(baseCurrencyCode) || !isValidCurrencyCode(targetCurrencyCode)) {
+			new RespMapper(resp, new AppException(ErrorMessage.CURRENCY_STANDART)).getMapperErr();
 			return;
 		}
 
@@ -85,16 +74,17 @@ public class ExchangeRatesServlet extends HttpServlet {
 		try {
 			rate = BigDecimal.valueOf(Double.parseDouble(rateParam)).setScale(6, RoundingMode.HALF_UP);
 		} catch (NumberFormatException e) {
-			new ResponseMapper(resp, "rate").incorectParameter();
-
+			new RespMapper(resp, new AppException(ErrorMessage.INCORRECT_RATE_VALUE)).getMapperErr();
 			return;
 		}
 
 		try {
 			//@formatter:off
 			ExchangeRate exchangeRate = new ExchangeRate(
-					currencyRepository.findByCode(baseCurrencyCode).orElseThrow(),
-					currencyRepository.findByCode(targetCurrencyCode).orElseThrow(),
+					currencyRepository.findByCode(baseCurrencyCode)
+						.orElseThrow(()-> new AppException(ErrorMessage.CURRENCY_NOT_FOUND)),
+					currencyRepository.findByCode(targetCurrencyCode)
+						.orElseThrow(()-> new AppException(ErrorMessage.CURRENCY_NOT_FOUND)),
 					rate);
 			//@formatter:on
 			Integer exchangeRateId = exchangeRateRepository.add(exchangeRate);
@@ -105,17 +95,10 @@ public class ExchangeRatesServlet extends HttpServlet {
 								exchangeRate.getTargetCurrency(),
 								rate.stripTrailingZeros().toPlainString());
 			//@formatter:on
-			new ResponseMapper(resp).successfulOut(rateDTO);
+			new RespMapper(resp, rateDTO).getMapperLuck();
 
-		} catch (NoSuchElementException e) {
-			new ResponseMapper(resp).noCurrenciesInDatabase();
-
-		} catch (SQLException e) {
-			if (e.getErrorCode() == SQLITE_CONSTRAINT_UNIQUE) {
-				new ResponseMapper(resp, "Exchange rate").alreadyExists();
-				return;
-			}
-			new ResponseMapper(resp).errorDatabase();
+		} catch (AppException e) {
+			new RespMapper(resp, e).getMapperErr();
 
 		}
 	}
